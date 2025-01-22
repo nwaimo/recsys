@@ -1,6 +1,7 @@
 import sys
 import logging
 from .recommender import MovieRecommenderSystem
+from .analytics import AnalyticsMonitor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,8 +23,23 @@ class MovieRecommenderCLI:
         print("4. Get genre recommendations")
         print("5. Rate a movie")
         print("6. View popular movies")
-        print("7. Exit")
+        print("7. Switch to admin mode")
+        print("8. Exit")
         print("\nEnter your choice (1-7): ")
+        
+        
+    def display_admin_menu(self):
+        """Display the admin menu options"""
+        print("\nMovie Recommender System - Admin Menu")
+        print("1. System status")
+        print("2. Save model")
+        print("3. Get analytics report")
+        print("4. Plot analytics")  
+        print("5. Start monitoring")
+        print("6. Switch to user mode")
+        print("7. Exit")
+        print("\nEnter your choice (1-5): ")
+        
 
     def search_movies(self):
         query = input("\nEnter movie title to search: ").strip()
@@ -97,6 +113,66 @@ class MovieRecommenderCLI:
         for _, movie in recommendations.iterrows():
             print(f"ID: {movie['movie_id']} - {movie['title']} ({movie['year']}) - Genres: {','.join(movie['genres'])}")
 
+    def get_system_status(self):
+        
+            status = self.recommender.get_system_status()
+            print("\nSystem Status:")
+            for key, value in status.items():
+                print(f"{key}: {value}")
+    
+    def save_model(self):
+        try:
+            self.recommender.save_model()
+            print("Model saved successfully!")
+        except Exception as e:
+            print(f"Error saving model: {str(e)}")            
+    
+    def start_monitoring(self):
+            try:
+                self.recommender.start_monitoring()
+                print("Monitoring started successfully!")
+            except Exception as e:
+                print(f"Error starting monitoring: {str(e)}")
+                
+            
+                      
+    def admin_mode(self):
+        while True:
+            self.display_admin_menu()
+            try:
+                choice = input().strip()
+                
+                if choice == '1':
+                    self.get_system_status()
+                elif choice == '2':
+                    self.save_model()                    
+                elif choice == '3':
+                    self.get_analytics_report()
+                elif choice == '4':
+                    self.plot_analytics()
+                elif choice == '5':
+                    self.start_monitoring()
+               
+                elif choice == '6':
+                    print("\nSwitching to user mode...")
+                    self.run()
+                    
+                    
+                    
+                elif choice == '7':
+                    print("\nThank you for using the Movie Recommender System!")
+                    sys.exit(0)
+                else:
+                    print("\nInvalid choice. Please enter a number between 1 and 8.")
+            
+            except Exception as e:
+                print(f"\nAn error occurred: {str(e)}")
+                logger.error(f"Error in admin loop: {str(e)}")
+                              
+ 
+    
+    
+        
     def rate_movie(self):
         try:
             user_id = int(input("\nEnter user ID: "))
@@ -108,6 +184,7 @@ class MovieRecommenderCLI:
                 return
 
             self.recommender.add_new_rating(user_id, movie_id, rating)
+            
             print("Rating added successfully!")
         
         except ValueError:
@@ -138,6 +215,17 @@ class MovieRecommenderCLI:
             print(f"ID: {movie['movie_id']} - {movie['title']} ({movie['year']}) - "
                   f"Average Rating: {avg_rating:.2f} ({num_ratings} ratings)")
 
+    def get_analytics_report(self):
+        analytics = AnalyticsMonitor()
+        report = analytics.get_analytics_report()
+        print("\nAnalytics Report:")
+        for key, value in report.items():
+            print(f"{key}: {value}")
+         
+    def plot_analytics(self):
+        analytics = AnalyticsMonitor()
+        analytics.plot_analytics()
+
     def run(self):
         while True:
             self.print_menu()
@@ -158,6 +246,8 @@ class MovieRecommenderCLI:
                 elif choice == '6':
                     self.view_popular_movies()
                 elif choice == '7':
+                    self.admin_mode()
+                elif choice == '8':
                     print("\nThank you for using the Movie Recommender System!")
                     sys.exit(0)
                 else:
@@ -169,7 +259,9 @@ class MovieRecommenderCLI:
 
 def main():
     cli = MovieRecommenderCLI()
+    
     cli.run()
+    
 
 if __name__ == "__main__":
     main()
