@@ -5,12 +5,16 @@ Run this script to start the system: python run.py
 """
 
 from src.main import main
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 if __name__ == "__main__":
     try:
+        logger.info("Starting Movie Recommender System...")
         main()
     except KeyboardInterrupt:
-        print("\nShutting down gracefully...")
+        logger.info("Shutting down gracefully...")
     except Exception as e:
-        print(f"\nAn error occurred: {str(e)}")
-        print("Please check the logs for more details.")
+        logger.error(f"An error occurred: {str(e)}")
+        logger.exception("Detailed traceback:")
