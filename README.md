@@ -1,130 +1,128 @@
 # Movie Recommender System
 
-A sophisticated movie recommendation system built with Python, featuring collaborative filtering, content-based filtering, and hybrid recommendations. The system includes real-time processing, analytics monitoring, and both user and admin interfaces.
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Features
+> A sophisticated recommendation engine that provides personalized movie suggestions using collaborative filtering, content-based filtering, and hybrid approaches.
 
-- Collaborative filtering using Approximate Nearest Neighbors (ANN)
-- Content-based filtering using movie genres and TF-IDF
-- Hybrid recommendation system
-- Real-time rating updates with batch processing
-- System monitoring and analytics
-- User and admin interfaces
-- Performance evaluation metrics
+## 📋 Table of Contents
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [License](#license)
 
-## Project Structure
+## ✨ Features
 
-```
-RecSys/
-├── src/
-│   ├── __init__.py
-│   ├── analytics.py      # Analytics monitoring
-│   ├── batch_processor.py # Batch processing functionality
-│   ├── data_loader.py    # Data loading and preprocessing
-│   ├── main.py          # Entry point and CLI interface
-│   ├── recommender.py   # Core recommendation logic
-│   └── utils.py         # Utility functions
-├── requirements.txt     # Project dependencies
-└── README.md           # Project documentation
-```
+- **Multiple Recommendation Methods**:
+  - Collaborative filtering with ANN (Approximate Nearest Neighbors)
+  - Content-based filtering using movie metadata
+  - Hybrid recommendations combining multiple approaches
 
-## Installation
+- **Real-time Processing**:
+  - Efficient batch processing of new ratings
+  - Automatic model updates
+  - Caching system for fast responses
 
-1. Clone the repository:
+- **User Experience**:
+  - User and admin interfaces
+  - Personalized recommendations
+  - Similar movie suggestions
+  - Genre-based filtering
+
+## 🚀 Installation
+
+1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/RecSys.git
+git clone https://github.com/nwaimo/RecSys.git
 cd RecSys
 ```
 
-2. Create and activate a virtual environment (optional but recommended):
+2. **Create a virtual environment**
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Windows
+venv\Scripts\activate
+# Unix/MacOS
+source venv/bin/activate
 ```
 
-3. Install dependencies:
+3. **Install dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+## 🎯 Quick Start
 
-Run the recommender system:
+Run the system:
 ```bash
-python -m src.main
+python run.py
 ```
 
-### User Menu Options
+## 💻 Usage
 
-1. Get similar movies
+### User Mode
+```bash
+# Start the system in user mode
+python run.py
+
+# Available commands:
+1. Search for movies
 2. Get personalized recommendations
-3. Get genre recommendations
-4. Add new rating
+3. Rate movies
+4. View popular movies
 5. Switch to admin mode
-6. Exit
+```
 
-### Admin Menu Options (Password: admin123)
+### Admin Mode
+```bash
+# Access admin features with password
+1. System status
+2. Save model
+3. Evaluate model
+4. Clear cache
+5. Switch to user mode
+```
 
-1. View analytics dashboard
-2. View analytics plots
-3. Save analytics
-4. View batch status
-5. Evaluate system
-6. Save model
-7. Switch to user mode
-8. Exit
+## 🏗 Architecture
 
-## Data
+```
+RecSys/
+├── src/
+│   ├── recommender.py    # Core recommendation engine
+│   ├── data_loader.py    # Data management
+│   ├── evaluation.py     # System evaluation
+│   ├── batch_processor.py # Real-time processing
+│   └── main.py          # CLI interface
+├── tests/               # Unit and integration tests
+├── requirements.txt     # Dependencies
+└── README.md           # Documentation
+```
 
-The system uses the MovieLens 1M dataset, which includes:
-- 1 million ratings
-- 6,000 users
-- 4,000 movies
-- Rating scale: 1-5 stars
+## 🔍 Testing
 
-The dataset will be automatically downloaded on first run.
+Run the test suite:
+```bash
+python -m pytest tests/
+```
 
-## Components
+## 🤝 Contributing
 
-### Analytics Monitor
-- Tracks system metrics
-- Monitors user activity
-- Records response times
-- Generates performance reports
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-### Batch Processor
-- Handles real-time rating updates
-- Processes ratings in batches
-- Updates recommendation models
-- Maintains system performance
+## 📄 License
 
-### Data Loader
-- Downloads and manages dataset
-- Preprocesses movie and user data
-- Creates feature matrices
-- Handles data transformations
+Distributed under the MIT License. See `LICENSE` for more information.
 
-### Recommender System
-- Implements core recommendation logic
-- Manages user preferences
-- Generates personalized recommendations
-- Maintains recommendation quality
+## 📧 Contact
 
-## Performance Metrics
+Your Name - [@nwaimo](https://github.com/nwaimo)
 
-The system evaluates recommendations using:
-- Precision
-- Recall
-- F1 Score
-- Diversity
-- Novelty
-- Coverage
-- Serendipity
-
-## Contributing
-
-Feel free to submit issues, fork the repository, and create pull requests for any improvements.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+Project Link: [https://github.com/nwaimo/RecSys](https://github.com/nwaimo/RecSys)
