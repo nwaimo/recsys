@@ -3,7 +3,6 @@ import requests
 import zipfile
 import pandas as pd
 import numpy as np
-import logging
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -175,6 +174,7 @@ class DataLoader:
     def get_user_movie_matrix(self) -> Tuple[pd.DataFrame, np.ndarray]:
         """
         Creates and returns the user-movie rating matrix and its normalized version.
+        Handles duplicate ratings by using the most recent rating.
 
         Returns:
             A tuple containing:
@@ -183,8 +183,15 @@ class DataLoader:
         """
         self.logger.info("Creating user-movie matrix...")
 
+        # Sort by timestamp and keep the most recent rating for each user-movie pair
+        latest_ratings = (self.ratings_df
+                         .sort_values('timestamp')
+                         .groupby(['movie_id', 'user_id'])
+                         .last()
+                         .reset_index())
+
         # Create the user-movie matrix
-        user_movie_matrix = self.ratings_df.pivot(
+        user_movie_matrix = latest_ratings.pivot(
             index='movie_id',
             columns='user_id',
             values='rating'
@@ -194,7 +201,7 @@ class DataLoader:
         scaler = StandardScaler()
         normalized_matrix = scaler.fit_transform(user_movie_matrix)
 
-        self.logger.info("User-movie matrix created and normalized.")
+        self.logger.info(f"User-movie matrix created with shape {user_movie_matrix.shape}")
         return user_movie_matrix, normalized_matrix
 
     def get_movie_ids(self) -> List[int]:
@@ -207,16 +214,7 @@ class DataLoader:
         return self.movies_df['movie_id'].tolist()
 
     def get_movie_info(self, movie_id: int) -> Dict[str, Any]:
-        """
-        Returns information about a specific movie.
-
-        Args:
-            movie_id: The ID of the movie.
-
-        Returns:
-            A dictionary containing the movie's title, genres, and year.
-            Returns an empty dictionary if the movie ID is not found.
-        """
+        """Restore original movie info method"""
         try:
             movie = self.movies_df[self.movies_df['movie_id'] == movie_id].iloc[0]
             return {
@@ -227,4 +225,4 @@ class DataLoader:
             }
         except IndexError:
             self.logger.warning(f"Movie ID {movie_id} not found.")
-              # Return empty dict if movie not found
+            return {}
