@@ -1,12 +1,16 @@
 from .data_loader import DataLoader
-from .analytics import AnalyticsMonitor
 from .batch_processor import BatchProcessor
+from .evaluation import RecommenderEvaluator
 from .recommender import MovieRecommenderSystem
 
-# Re-order exports to match dependency chain
 __all__ = [
     'DataLoader',
-    'AnalyticsMonitor',
+    'RecommenderEvaluator',
     'BatchProcessor',
     'MovieRecommenderSystem'
 ]
+
+## to push code base using git
+# git add .
+# git commit -m "message"
+# git push origin main

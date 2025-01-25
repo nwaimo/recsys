@@ -11,10 +11,12 @@ from sklearn.preprocessing import StandardScaler
 from typing import List, Dict, Any, Tuple, Optional
 
 # Add imports for the improved classes
-from .analytics import AnalyticsMonitor  # Assuming you move the improved AnalyticsMonitor to a file named analytics.py
 from .batch_processor import BatchProcessor  # Assuming you move the improved BatchProcessor to a file named batch_processor.py
 from .data_loader import DataLoader
 from .utils.logger import setup_logger
+
+
+
 
 class MovieRecommenderSystem:
     """
@@ -37,7 +39,6 @@ class MovieRecommenderSystem:
         """
         self.logger = setup_logger(__name__)
         self.data_loader = DataLoader()
-        self.analytics = None
         self.batch_processor = None
         
 
@@ -55,17 +56,9 @@ class MovieRecommenderSystem:
         self.update_interval = timedelta(minutes=30)  # Interval for periodic model updates
         self.is_updating = False  # Flag to indicate if a model update is in progress
 
-    def set_analytics(self, analytics):
-        """Set the analytics monitor via dependency injection"""
-        self.analytics = analytics
-
     def set_batch_processor(self, batch_processor):
         """Set the batch processor via dependency injection"""
         self.batch_processor = batch_processor
-
-    def setup_logging(self):
-        """Remove this method as we now use the centralized logger."""
-        pass  # Logging is now handled by setup_logger
 
     def initialize(self):
         """
@@ -80,6 +73,7 @@ class MovieRecommenderSystem:
         self.data_loader.load_data()
         self.create_feature_matrices()
         self.build_ann_index()
+        
         self.logger.info("Recommender system initialized.")
 
     def create_feature_matrices(self):
@@ -149,130 +143,72 @@ class MovieRecommenderSystem:
         self.logger.info(f"FAISS index built with {self.index.ntotal} movies.")
 
     def get_similar_movies(self, movie_id: int, n_neighbors: int = 5) -> List[Dict[str, Any]]:
-        """
-        Finds movies similar to a given movie using the FAISS index.
-
-        Args:
-            movie_id: The ID of the movie for which to find similar movies.
-            n_neighbors: The number of similar movies to return.
-
-        Returns:
-            A list of dictionaries, where each dictionary represents a similar movie and contains its ID, title, and other information.
-        """
-        start_time = time.time()
-        self.analytics.record_recommendation_request()
-
+        """Modified to remove analytics"""
         try:
-            # Get the index of the movie in the movie_ids
             movie_idx = self.movie_ids.get_loc(movie_id)
-
-            # Get the movie vector (features) and reshape for FAISS
             movie_vector = self.movie_features[movie_idx].reshape(1, -1)
-
-            # Search using FAISS
-            distances, indices = self.index.search(movie_vector, n_neighbors + 1)  # +1 to include the movie itself
-
-            # Get the movie IDs of the similar movies (excluding the query movie itself)
-            similar_movie_indices = indices[0][1:]
-            similar_movie_ids = self.movie_ids[similar_movie_indices]
-
-            # Get movie information for the similar movies
-            similar_movies = []
-            for mid in similar_movie_ids:
-                similar_movies.append(self.data_loader.get_movie_info(mid))
-
-            response_time = time.time() - start_time
-            self.analytics.record_response_time(response_time)
-            self.logger.debug(f"Similar movies for movie ID {movie_id} found in {response_time:.4f} seconds.")
+            distances, indices = self.index.search(movie_vector, n_neighbors + 1)
+            
+            # Get content-based recommendations using TF-IDF
+            movie_tfidf_idx = self.data_loader.movies_df[self.data_loader.movies_df['movie_id'] == movie_id].index[0]
+            movie_tfidf = self.data_loader.tfidf_matrix[movie_tfidf_idx]
+            tfidf_similarities = self.data_loader.tfidf_matrix.dot(movie_tfidf.T).toarray().flatten()
+            tfidf_similar_indices = tfidf_similarities.argsort()[-n_neighbors-1:-1][::-1]
+            
+            similar_movie_indices = list(set(indices[0][1:]).union(set(tfidf_similar_indices)))[:n_neighbors]
+            similar_movie_ids = [self.data_loader.movies_df.iloc[idx]['movie_id'] for idx in similar_movie_indices]
+            similar_movies = [self.data_loader.get_movie_info(mid) for mid in similar_movie_ids]
             return similar_movies
 
-        except KeyError:
-            self.analytics.record_error('movie_not_found')
-            self.logger.warning(f"Movie ID {movie_id} not found in the database.")
-            return []  # Return an empty list if movie not found
         except Exception as e:
-            self.analytics.record_error('similar_movies_error')
-            self.logger.error(f"Error getting similar movies for movie ID {movie_id}: {e}")
-            return []  # Return an empty list on error
+            self.logger.error(f"Error getting similar movies: {e}")
+            return []
 
     def get_user_recommendations(self, user_id: int, n_recommendations: int = 5) -> List[Dict[str, Any]]:
-        """
-        Generates personalized movie recommendations for a given user.
-
-        The recommendation process involves:
-
-        1. **Checking the cache:** If recommendations for the user are already in the cache and are not stale, return them.
-        2. **Finding similar movies to the user's top-rated movies:** Get the user's highest-rated movies and find other movies similar to them using `get_similar_movies`.
-        3. **Filtering out movies the user has already seen.**
-        4. **Using popularity scores to rank or filter recommendations** (if popularity scores are available).
-        5. **Caching the generated recommendations.**
-
-        Args:
-            user_id: The ID of the user for whom to generate recommendations.
-            n_recommendations: The number of recommendations to generate.
-
-        Returns:
-            A list of dictionaries, where each dictionary represents a recommended movie.
-        """
-        start_time = time.time()
-        self.analytics.record_recommendation_request()
-
+        """Fixed user recommendations method"""
         try:
-            # 1. Check the cache
+            # Check cache first
             if user_id in self.cache and time.time() - self.cache[user_id]['timestamp'] < self.update_interval.total_seconds():
-                self.analytics.record_cache_hit()
-                response_time = time.time() - start_time
-                self.analytics.record_response_time(response_time)
-                self.logger.debug(f"Recommendations for user {user_id} found in cache in {response_time:.4f} seconds")
                 return self.cache[user_id]['recommendations']
 
-            self.analytics.record_cache_miss()
-
-            # 2. Get user's rated movies
+            # Get user's ratings
             user_ratings = self.data_loader.ratings_df[self.data_loader.ratings_df['user_id'] == user_id]
             
-            # Handle cases where the user has no ratings
             if user_ratings.empty:
-                self.logger.info(f"User {user_id} has no ratings. Returning top popular movies.")
+                # If no ratings, return popular movies
                 return self.get_top_popular_movies(n_recommendations)
 
-            # 3. Find the user's top-rated movies and get similar movies
-            user_avg_rating = user_ratings['rating'].mean()
-            rated_movies = user_ratings['movie_id'].values
-            top_rated_movies = user_ratings[user_ratings['rating'] >= user_avg_rating]['movie_id'].values
-
-            similar_movie_candidates: List[Dict] = []
-            for movie_id in top_rated_movies:
-                similar_movies = self.get_similar_movies(movie_id, n_neighbors=3) # Get top 3 similar movies for each top-rated movie
-                if similar_movies:
-                    similar_movie_candidates.extend(similar_movies)
-
-            # 4. Filter out movies the user has already rated
+            # Get movies similar to user's highly rated movies
+            rated_movies = user_ratings.sort_values('rating', ascending=False)
+            top_rated = rated_movies.head(3)  # Use top 3 rated movies
             
-            recommendations = [movie for movie in similar_movie_candidates if movie['movie_id'] not in rated_movies]
+            similar_movies = []
+            for _, movie in top_rated.iterrows():
+                similar = self.get_similar_movies(movie['movie_id'], n_neighbors=5)
+                similar_movies.extend(similar)
 
-            # Remove duplicate recommendations (if any)
-            recommendations = list({movie['movie_id']: movie for movie in recommendations}.values())
+            # Remove duplicates and already rated movies
+            rated_movie_ids = set(user_ratings['movie_id'])
+            unique_recommendations = []
+            seen_ids = set()
 
-            # 5. Sort by popularity (if available) and take top N
-            if self.popularity_scores is not None:
-                recommendations.sort(key=lambda movie: self.popularity_scores.get(movie['movie_id'], 0), reverse=True)
+            for movie in similar_movies:
+                movie_id = movie['movie_id']
+                if movie_id not in rated_movie_ids and movie_id not in seen_ids:
+                    unique_recommendations.append(movie)
+                    seen_ids.add(movie_id)
 
-            recommendations = recommendations[:n_recommendations]
+            recommendations = unique_recommendations[:n_recommendations]
 
-            # 6. Cache the recommendations
+            # Cache the results
             self.cache[user_id] = {
                 'recommendations': recommendations,
                 'timestamp': time.time()
             }
 
-            response_time = time.time() - start_time
-            self.analytics.record_response_time(response_time)
-            self.logger.info(f"Recommendations for user {user_id} generated in {response_time:.4f} seconds")
             return recommendations
 
         except Exception as e:
-            self.analytics.record_error('recommendation_error')
             self.logger.error(f"Error getting recommendations for user {user_id}: {e}")
             return []
 
@@ -293,8 +229,7 @@ class MovieRecommenderSystem:
         top_movie_ids = self.popularity_scores.nlargest(n_recommendations).index
         top_movies = [self.data_loader.get_movie_info(movie_id) for movie_id in top_movie_ids]
         return top_movies
-    
-    
+      
     def get_genre_recommendations(self, genres: List[str], n_recommendations: int = 5) -> List[Dict[str, Any]]:
         """
         Gets movie recommendations based on specified genres.
@@ -308,7 +243,6 @@ class MovieRecommenderSystem:
         """
         self.logger.info(f"Getting genre recommendations for genres: {', '.join(genres)}")
         start_time = time.time()
-        self.analytics.record_recommendation_request()
         
         try:
             # Filter movies that have at least one of the specified genres
@@ -317,7 +251,7 @@ class MovieRecommenderSystem:
             ]
 
             # If no movies found for the specified genre, return an empty list
-            if genre_movies.empty:
+            if (genre_movies.empty):
                 self.logger.warning(f"No movies found for genres: {', '.join(genres)}")
                 return []
             
@@ -361,29 +295,16 @@ class MovieRecommenderSystem:
                 })
             
             response_time = time.time() - start_time
-            self.analytics.record_response_time(response_time)
             self.logger.info(f"Genre recommendations generated in {response_time:.4f} seconds")
             
             return recommendation_list
 
         except Exception as e:
-            self.analytics.record_error('genre_recommendation_error')
             self.logger.error(f"Error getting genre recommendations: {e}")
             return []
 
     def add_new_rating(self, user_id: int, movie_id: int, rating: float, timestamp: Optional[int] = None):
-        """
-        Adds a new rating to the system. The rating is:
-
-        1. Added to the `BatchProcessor` for later model updates.
-        2. Used to update analytics metrics.
-
-        Args:
-            user_id: The ID of the user who gave the rating.
-            movie_id: The ID of the movie being rated.
-            rating: The rating value (e.g., 4.5).
-            timestamp: The timestamp of the rating (optional, defaults to current time).
-        """
+        """Modified to remove analytics"""
         self.logger.debug(f"Adding new rating: user_id={user_id}, movie_id={movie_id}, rating={rating}")
 
         if timestamp is None:
@@ -399,9 +320,6 @@ class MovieRecommenderSystem:
         # Add the new rating to the batch processor
         if not self.batch_processor.add_to_batch(new_rating):
             self.logger.error(f"Failed to add rating to batch processor: {new_rating}")
-
-        # Update analytics metrics
-        self.analytics.record_rating(user_id, movie_id, rating)
 
     def update_feature_matrices_with_new_data(self):
         """
@@ -458,7 +376,6 @@ class MovieRecommenderSystem:
                 self.logger.info("No new ratings to update.")
 
         except Exception as e:
-            self.analytics.record_error('update_error')
             self.logger.error(f"Error updating feature matrices: {e}")
         finally:
             self.is_updating = False
@@ -467,9 +384,10 @@ class MovieRecommenderSystem:
     def evaluate_recommendations(self, test_users: Optional[List[int]] = None, k: int = 10) -> Dict[str, float]:
         """
         Evaluates the recommender system's performance using metrics like NDCG, Precision@k, Recall@k, and MAP@k.
+        Now handles duplicate ratings properly.
 
         Args:
-            test_users: A list of user IDs to use for evaluation. If None, uses a random sample of 1000 users (or all users if fewer than 1000).
+            test_users: A list of user IDs to use for evaluation. If None, uses a random sample of 1000 users.
             k: The number of recommendations to generate for evaluation.
 
         Returns:
@@ -477,104 +395,110 @@ class MovieRecommenderSystem:
         """
         self.logger.info("Evaluating recommendations...")
 
-        if test_users is None:
-            all_users = self.data_loader.ratings_df['user_id'].unique()
-            test_users = np.random.choice(all_users, min(1000, len(all_users)), replace=False)
+        try:
+            if test_users is None:
+                all_users = self.data_loader.ratings_df['user_id'].unique()
+                test_users = np.random.choice(all_users, min(1000, len(all_users)), replace=False)
 
-        metrics = {
-            'ndcg': [],
-            'precision': [],
-            'recall': [],
-            'map': []
-        }
+            metrics = {
+                'ndcg': [],
+                'precision': [],
+                'recall': [],
+                'map': []
+            }
 
-        for user_id in test_users:
-            user_ratings = self.data_loader.ratings_df[self.data_loader.ratings_df['user_id'] == user_id].sort_values('timestamp')
+            # Create a copy of the original ratings DataFrame
+            original_ratings = self.data_loader.ratings_df.copy()
 
-            if len(user_ratings) < 10:  # Need at least k+1 ratings for evaluation
-                continue
+            for user_id in test_users:
+                # Get user's ratings and sort by timestamp
+                user_ratings = original_ratings[original_ratings['user_id'] == user_id].sort_values('timestamp')
+                
+                if len(user_ratings) < 10:  # Need at least k+1 ratings for evaluation
+                    continue
 
-            train_ratings = user_ratings.iloc[:-5]  # Hold out the last 5 ratings for testing
-            test_ratings = user_ratings.iloc[-5:]
-            test_movies = set(test_ratings['movie_id'])
+                # Get the last 5 unique movies as test set
+                test_ratings = (user_ratings.drop_duplicates('movie_id', keep='last')
+                              .iloc[-5:])
+                test_movies = set(test_ratings['movie_id'])
 
-            # Temporarily add the train ratings to the recommender system's data
-            self.data_loader.ratings_df = pd.concat([self.data_loader.ratings_df, train_ratings])
+                # Get training data (all ratings except the test ones)
+                train_ratings = user_ratings[~user_ratings['movie_id'].isin(test_movies)]
+
+                if train_ratings.empty:
+                    continue
+
+                # Temporarily update the ratings DataFrame
+                self.data_loader.ratings_df = pd.concat([
+                    original_ratings[original_ratings['user_id'] != user_id],
+                    train_ratings
+                ])
+
+                # Update matrices with training data
+                self.create_feature_matrices()
+                self.build_ann_index()
+
+                # Get recommendations
+                recommendations = self.get_user_recommendations(user_id, n_recommendations=k)
+                
+                if not recommendations:
+                    continue
+
+                rec_movies = [r['movie_id'] for r in recommendations]
+
+                # Calculate metrics
+                metrics['ndcg'].append(self._calculate_ndcg(test_movies, rec_movies, k))
+                precision, recall = self._calculate_precision_recall(test_movies, rec_movies, k)
+                metrics['precision'].append(precision)
+                metrics['recall'].append(recall)
+                metrics['map'].append(self._calculate_map(test_movies, rec_movies, k))
+
+            # Restore original ratings DataFrame
+            self.data_loader.ratings_df = original_ratings
             self.create_feature_matrices()
             self.build_ann_index()
 
-            # Get recommendations
-            recommendations = self.get_user_recommendations(user_id, n_recommendations=k)
-            
-            # Remove the temporarily added train ratings
-            self.data_loader.ratings_df = self.data_loader.ratings_df.drop(train_ratings.index)
-            self.create_feature_matrices()
-            self.build_ann_index()
+            # Calculate average metrics
+            avg_metrics = {
+                'ndcg@k': np.mean(metrics['ndcg']),
+                'precision@k': np.mean(metrics['precision']),
+                'recall@k': np.mean(metrics['recall']),
+                'map@k': np.mean(metrics['map'])
+            }
 
-            if not recommendations:
-                continue
+            self.logger.info(f"Evaluation complete: {avg_metrics}")
+            return avg_metrics
 
-            rec_movies = [r['movie_id'] for r in recommendations]
+        except Exception as e:
+            self.logger.error(f"Error in evaluation: {e}", exc_info=True)
+            raise
 
-            # Calculate metrics
-            metrics['ndcg'].append(self._calculate_ndcg(test_movies, rec_movies, k))
-            precision, recall = self._calculate_precision_recall(test_movies, rec_movies, k)
-            metrics['precision'].append(precision)
-            metrics['recall'].append(recall)
-            metrics['map'].append(self._calculate_map(test_movies, rec_movies, k))
-
-        # Average metrics across users
-        avg_metrics = {
-            'ndcg@k': np.mean(metrics['ndcg']),
-            'precision@k': np.mean(metrics['precision']),
-            'recall@k': np.mean(metrics['recall']),
-            'map@k': np.mean(metrics['map'])
-        }
-        self.logger.info(f"Evaluation complete: {avg_metrics}")
-        return avg_metrics
-
-    def _calculate_ndcg(self, actual: set, predicted: list, k: int) -> float:
-        """
-        Calculates the Normalized Discounted Cumulative Gain (NDCG) at k.
-
-        Args:
-            actual: A set of the actual relevant movie IDs.
-            predicted: A list of the predicted movie IDs (in order).
-            k: The position up to which to calculate NDCG.
-
-        Returns:
-            The NDCG@k value.
-        """
+    def _calculate_ndcg(self, actual: set, predicted: List[int], k: int) -> float:
+        """Calculate Normalized Discounted Cumulative Gain"""
         dcg = 0.0
         idcg = 0.0
-
+        
         for i, movie_id in enumerate(predicted[:k]):
             if movie_id in actual:
-                dcg += 1 / np.log2(i + 2)  # +2 because log2(1) = 0
-
+                dcg += 1.0 / np.log2(i + 2)
+                
+        # Calculate ideal DCG
         for i in range(min(len(actual), k)):
-            idcg += 1 / np.log2(i + 2)
-
+            idcg += 1.0 / np.log2(i + 2)
+            
         return dcg / idcg if idcg > 0 else 0.0
 
-    def _calculate_precision_recall(self, actual: set, predicted: list, k: int) -> Tuple[float, float]:
-        """
-        Calculates Precision@k and Recall@k.
-
-        Args:
-            actual: A set of the actual relevant movie IDs.
-            predicted: A list of the predicted movie IDs.
-            k: The position up to which to calculate precision and recall.
-
-        Returns:
-            A tuple containing the Precision@k and Recall@k values.
-        """
-        relevant_and_retrieved = len(actual.intersection(set(predicted[:k])))
-        precision = relevant_and_retrieved / k if k > 0 else 0.0
-        recall = relevant_and_retrieved / len(actual) if len(actual) > 0 else 0.0
+    def _calculate_precision_recall(self, actual: set, predicted: List[int], k: int) -> Tuple[float, float]:
+        """Calculate Precision and Recall at k"""
+        pred_k = set(predicted[:k])
+        num_hits = len(actual & pred_k)
+        
+        precision = num_hits / k if k > 0 else 0.0
+        recall = num_hits / len(actual) if len(actual) > 0 else 0.0
+        
         return precision, recall
 
-    def _calculate_map(self, actual: set, predicted: list, k: int) -> float:
+    def _calculate_map(self, actual: set, predicted: List[int], k: int) -> float:
         """
         Calculates the Mean Average Precision (MAP) at k.
 
@@ -596,25 +520,6 @@ class MovieRecommenderSystem:
 
         return ap / min(len(actual), k) if len(actual) > 0 else 0.0
 
-    def get_analytics_dashboard(self) -> Dict[str, Any]:
-        """
-        Generates a dictionary containing analytics data for a dashboard.
-
-        Returns:
-            A dictionary with analytics report, batch processing status, and system status.
-        """
-        report = self.analytics.get_analytics_report()
-        batch_status = self.batch_processor.get_batch_status()
-        system_status = self.get_system_status()
-
-        dashboard = {
-            'analytics': report,
-            'batch_processing': batch_status,
-            'system_status': system_status
-        }
-        self.logger.info("Analytics dashboard generated.")
-        return dashboard
-
     def get_system_status(self) -> Dict[str, Any]:
         """
         Gets the current system status.
@@ -631,16 +536,6 @@ class MovieRecommenderSystem:
             'cache_size': len(self.cache),
             'batch_queue_size': self.batch_processor.batch_queue.qsize()
         }
-
-    def start_update_process(self):
-        """
-        Starts the process of updating feature matrices in a separate thread if an update is not already in progress.
-        """
-        if not self.is_updating:
-            self.logger.info("Starting scheduled update process...")
-            threading.Thread(target=self.update_feature_matrices_with_new_data, daemon=True).start()
-        else:
-            self.logger.info("Update already in progress.")
 
     def save_model(self, filepath: str):
         """
