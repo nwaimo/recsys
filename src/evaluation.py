@@ -4,8 +4,6 @@ from typing import Dict, List, Tuple, Set
 from sklearn.model_selection import KFold
 from .utils.logger import setup_logger
 from datetime import datetime
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import json
 
 class RecommenderEvaluator:
     def __init__(self, recommender):

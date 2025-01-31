@@ -47,6 +47,7 @@ class BatchProcessor:
         if self.checker_thread is None or not self.checker_thread.is_alive(): # Prevent starting multiple checkers
             self.checker_thread = threading.Thread(target=self._check_queue_periodically, daemon=True, name="BatchQueueChecker") # Naming thread
             self.checker_thread.start()
+            
             self.logger.info("Batch checker thread started.")
         else:
             self.logger.warning("Batch checker thread already running, avoiding restart.")
@@ -104,7 +105,7 @@ class BatchProcessor:
                 self.logger.error(f"Validation failed: timestamp must be int, got {type(rating['timestamp']).__name__}. Rating data: {rating}")
                 return False
 
-            # Additional validation rules can be added here
+            
 
             return True
 
@@ -189,6 +190,7 @@ class BatchProcessor:
             for future in futures:
                 try:
                     future.result() # Will raise exception if _process_ratings_chunk failed
+            
                     processed_chunk_count += 1
                 except Exception as e_chunk:
                     self.logger.error(f"Error processing a chunk in batch: {e_chunk}", exc_info=True) # Log chunk processing error
