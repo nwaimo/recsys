@@ -303,23 +303,48 @@ class MovieRecommenderSystem:
             self.logger.error(f"Error getting genre recommendations: {e}")
             return []
 
-    def add_new_rating(self, user_id: int, movie_id: int, rating: float, timestamp: Optional[int] = None):
-        """Modified to remove analytics"""
-        self.logger.debug(f"Adding new rating: user_id={user_id}, movie_id={movie_id}, rating={rating}")
+    def add_new_rating(self, user_id: int, movie_id: int, rating: float) -> bool:
+        """
+        Add a new rating to the system.
+        
+        Args:
+            user_id: The ID of the user
+            movie_id: The ID of the movie
+            rating: The rating value (between 0.5 and 5.0)
+            
+        Returns:
+            bool: True if rating was successfully added, False otherwise
+        """
+        try:
+            # Validate inputs
+            if not isinstance(rating, (int, float)) or rating < 0.5 or rating > 5.0:
+                self.logger.error(f"Invalid rating value: {rating}")
+                return False
+                
+            if movie_id not in self.data_loader.get_movie_ids():
+                self.logger.error(f"Invalid movie ID: {movie_id}")
+                return False
 
-        if timestamp is None:
-            timestamp = int(time.time())
+            # Create rating data
+            rating_data = {
+                'user_id': user_id,
+                'movie_id': movie_id,
+                'rating': float(rating),
+                'timestamp': int(time.time())
+            }
 
-        new_rating = {
-            'user_id': user_id,
-            'movie_id': movie_id,
-            'rating': rating,
-            'timestamp': timestamp
-        }
+            # Add to batch processor
+            if self.batch_processor:
+                self.batch_processor.add_to_batch(rating_data)
+                self.logger.info(f"New rating added to batch: User {user_id}, Movie {movie_id}, Rating {rating}")
+                return True
+            else:
+                self.logger.error("Batch processor not initialized")
+                return False
 
-        # Add the new rating to the batch processor
-        if not self.batch_processor.add_to_batch(new_rating):
-            self.logger.error(f"Failed to add rating to batch processor: {new_rating}")
+        except Exception as e:
+            self.logger.error(f"Error adding new rating: {e}", exc_info=True)
+            return False
 
     def update_feature_matrices_with_new_data(self):
         """
@@ -381,145 +406,7 @@ class MovieRecommenderSystem:
             self.is_updating = False
             self.update_lock.release()
 
-    def evaluate_recommendations(self, test_users: Optional[List[int]] = None, k: int = 10) -> Dict[str, float]:
-        """
-        Evaluates the recommender system's performance using metrics like NDCG, Precision@k, Recall@k, and MAP@k.
-        Now handles duplicate ratings properly.
-
-        Args:
-            test_users: A list of user IDs to use for evaluation. If None, uses a random sample of 1000 users.
-            k: The number of recommendations to generate for evaluation.
-
-        Returns:
-            A dictionary containing the average evaluation metrics.
-        """
-        self.logger.info("Evaluating recommendations...")
-
-        try:
-            if test_users is None:
-                all_users = self.data_loader.ratings_df['user_id'].unique()
-                test_users = np.random.choice(all_users, min(1000, len(all_users)), replace=False)
-
-            metrics = {
-                'ndcg': [],
-                'precision': [],
-                'recall': [],
-                'map': []
-            }
-
-            # Create a copy of the original ratings DataFrame
-            original_ratings = self.data_loader.ratings_df.copy()
-
-            for user_id in test_users:
-                # Get user's ratings and sort by timestamp
-                user_ratings = original_ratings[original_ratings['user_id'] == user_id].sort_values('timestamp')
-                
-                if len(user_ratings) < 10:  # Need at least k+1 ratings for evaluation
-                    continue
-
-                # Get the last 5 unique movies as test set
-                test_ratings = (user_ratings.drop_duplicates('movie_id', keep='last')
-                              .iloc[-5:])
-                test_movies = set(test_ratings['movie_id'])
-
-                # Get training data (all ratings except the test ones)
-                train_ratings = user_ratings[~user_ratings['movie_id'].isin(test_movies)]
-
-                if train_ratings.empty:
-                    continue
-
-                # Temporarily update the ratings DataFrame
-                self.data_loader.ratings_df = pd.concat([
-                    original_ratings[original_ratings['user_id'] != user_id],
-                    train_ratings
-                ])
-
-                # Update matrices with training data
-                self.create_feature_matrices()
-                self.build_ann_index()
-
-                # Get recommendations
-                recommendations = self.get_user_recommendations(user_id, n_recommendations=k)
-                
-                if not recommendations:
-                    continue
-
-                rec_movies = [r['movie_id'] for r in recommendations]
-
-                # Calculate metrics
-                metrics['ndcg'].append(self._calculate_ndcg(test_movies, rec_movies, k))
-                precision, recall = self._calculate_precision_recall(test_movies, rec_movies, k)
-                metrics['precision'].append(precision)
-                metrics['recall'].append(recall)
-                metrics['map'].append(self._calculate_map(test_movies, rec_movies, k))
-
-            # Restore original ratings DataFrame
-            self.data_loader.ratings_df = original_ratings
-            self.create_feature_matrices()
-            self.build_ann_index()
-
-            # Calculate average metrics
-            avg_metrics = {
-                'ndcg@k': np.mean(metrics['ndcg']),
-                'precision@k': np.mean(metrics['precision']),
-                'recall@k': np.mean(metrics['recall']),
-                'map@k': np.mean(metrics['map'])
-            }
-
-            self.logger.info(f"Evaluation complete: {avg_metrics}")
-            return avg_metrics
-
-        except Exception as e:
-            self.logger.error(f"Error in evaluation: {e}", exc_info=True)
-            raise
-
-    def _calculate_ndcg(self, actual: set, predicted: List[int], k: int) -> float:
-        """Calculate Normalized Discounted Cumulative Gain"""
-        dcg = 0.0
-        idcg = 0.0
-        
-        for i, movie_id in enumerate(predicted[:k]):
-            if movie_id in actual:
-                dcg += 1.0 / np.log2(i + 2)
-                
-        # Calculate ideal DCG
-        for i in range(min(len(actual), k)):
-            idcg += 1.0 / np.log2(i + 2)
-            
-        return dcg / idcg if idcg > 0 else 0.0
-
-    def _calculate_precision_recall(self, actual: set, predicted: List[int], k: int) -> Tuple[float, float]:
-        """Calculate Precision and Recall at k"""
-        pred_k = set(predicted[:k])
-        num_hits = len(actual & pred_k)
-        
-        precision = num_hits / k if k > 0 else 0.0
-        recall = num_hits / len(actual) if len(actual) > 0 else 0.0
-        
-        return precision, recall
-
-    def _calculate_map(self, actual: set, predicted: List[int], k: int) -> float:
-        """
-        Calculates the Mean Average Precision (MAP) at k.
-
-        Args:
-            actual: A set of the actual relevant movie IDs.
-            predicted: A list of the predicted movie IDs.
-            k: The position up to which to calculate MAP.
-
-        Returns:
-            The MAP@k value.
-        """
-        ap = 0.0
-        num_hits = 0.0
-
-        for i, movie_id in enumerate(predicted[:k]):
-            if movie_id in actual:
-                num_hits += 1.0
-                ap += num_hits / (i + 1.0)
-
-        return ap / min(len(actual), k) if len(actual) > 0 else 0.0
-
+ 
     def get_system_status(self) -> Dict[str, Any]:
         """
         Gets the current system status.

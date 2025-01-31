@@ -10,6 +10,7 @@ from datetime import datetime
 from .evaluation import RecommenderEvaluator
 
 
+
 # Configure logging using the centralized logger
 logger = setup_logger(__name__)
 
@@ -50,7 +51,10 @@ class MovieRecommenderCLI:
 
     def display_user_menu(self):
         """Updated menu options"""
-        print(f"\nMovie Recommender System - User Mode ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})") # Added timestamp
+        print("\n" + "="*50)
+        print("Movie Recommender System - User Mode")
+        print(f"Current Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("="*50)
         print("1. Search for a movie")
         print("2. Get similar movies")
         print("3. Get personalized recommendations")
@@ -59,6 +63,7 @@ class MovieRecommenderCLI:
         print("6. Switch to admin mode")
         print("7. Exit")
         print("\nEnter your choice (1-7): ")
+        print("-"*50)
 
     def display_admin_menu(self):
         """
@@ -69,9 +74,10 @@ class MovieRecommenderCLI:
         print("2. Save model")
         print("3. Evaluate model")
         print("4. Clear cache")
-        print("5. Switch to user mode")
-        print("6. Exit")
-        print("\nEnter your choice (1-6): ")
+        print("5.  Run system tests")
+        print("6. Switch to user mode")
+        print("7. Exit")
+        print("\nEnter your choice (1-7): ")
 
     def search_movies(self):
         """
@@ -391,6 +397,38 @@ class MovieRecommenderCLI:
             self.logger.error(f"Error clearing cache: {e}", exc_info=True)
             print("An error occurred while clearing the cache.")
 
+    def run_tests(self):
+        """
+        Executes the test suite for the recommender system.
+        """
+        try:
+            print("\nRunning test suite...")
+            import unittest
+            from tests.test_recommender import TestRecommenderSystem
+            from tests.test_data_loader import TestDataLoader
+            from tests.test_batch_processor import TestBatchProcessor
+            from tests.test_evaluation import TestRecommenderEvaluator  # Fixed class name
+            
+            # Create a test suite
+            suite = unittest.TestLoader().loadTestsFromTestCase(TestRecommenderSystem)
+            suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestDataLoader))
+            suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestBatchProcessor))
+            suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestRecommenderEvaluator))  # Fixed class name
+            
+            # Run the tests
+            result = unittest.TextTestRunner(verbosity=2).run(suite)
+            
+            # Print summary
+            print(f"\nTest Summary:")
+            print(f"Tests Run: {result.testsRun}")
+            print(f"Failures: {len(result.failures)}")
+            print(f"Errors: {len(result.errors)}")
+            print(f"Skipped: {len(result.skipped)}")
+            
+        except Exception as e:
+            self.logger.error(f"Error running tests: {e}", exc_info=True)
+            print("An error occurred while running the tests. Check the logs for details.")
+
     def run(self):
         """Updated main loop with new menu structure"""
         while True:
@@ -430,13 +468,15 @@ class MovieRecommenderCLI:
                     elif choice == '4':
                         self.clear_cache()
                     elif choice == '5':
+                        self.run_tests()
+                    elif choice == '6':
                         self.mode = MovieRecommenderCLI.USER_MODE # Use constants for modes
                         print("\nSwitching to user mode...")
-                    elif choice == '6':
+                    elif choice == '7':
                         print("\nThank you for using the Movie Recommender System!")
                         sys.exit(0)
                     else:
-                        print("\nInvalid choice. Please enter a number between 1 and 6.") # Updated choice range for admin menu
+                        print("\nInvalid choice. Please enter a number between 1 and 7.") # Updated choice range for admin menu
             except KeyboardInterrupt:
                  print("\nExiting the program.")
                  sys.exit(0)
